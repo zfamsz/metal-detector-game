@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Metal Detector — Cari Harta Karun</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0f172a; color: #e2e8f0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+    padding: 12px;
+  }
+  .card {
+    width: 100%; max-width: 440px; background: #1e293b;
+    border: 1px solid #334155; border-radius: 16px; padding: 14px;
+  }
+  h1 { font-size: 22px; text-align: center; color: #2dd4bf; }
+  .sub { text-align: center; color: #94a3b8; font-size: 13px; margin: 4px 0 10px; }
+  .stats { display: flex; gap: 8px; margin-bottom: 10px; }
+  .stat {
+    flex: 1; background: #0f172a; border: 1px solid #334155;
+    border-radius: 10px; padding: 8px 4px; text-align: center;
+  }
+  .stat .label { font-size: 11px; color: #94a3b8; }
+  .stat .value { font-size: 19px; font-weight: 700; color: #fff; }
+  .stat .value.warn { color: #f87171; }
+  #field {
+    width: 100%; aspect-ratio: 1; display: block; border-radius: 12px;
+    border: 2px solid #334155; touch-action: none; background: #7c5a2e;
+    cursor: crosshair;
+  }
+  .meter-wrap { margin-top: 10px; }
+  .meter-label { display: flex; justify-content: space-between; font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
+  .meter { height: 14px; background: #0f172a; border: 1px solid #334155; border-radius: 99px; overflow: hidden; }
+  #meterFill { height: 100%; width: 0%; background: #22c55e; border-radius: 99px; transition: width 80ms linear, background 80ms linear; }
+  #hint { text-align: center; font-size: 14px; min-height: 22px; margin: 8px 0; color: #fde68a; }
+  .buttons { display: flex; gap: 8px; }
+  button {
+    flex: 1; border: none; border-radius: 12px; padding: 14px 8px;
+    font-size: 17px; font-weight: 700; cursor: pointer; color: #fff;
+  }
+  #digBtn { background: #0f766e; }
+  #digBtn:disabled { background: #475569; cursor: not-allowed; }
+  #digBtn.hot { background: #dc2626; animation: pulse 0.5s infinite alternate; }
+  @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.04); } }
+  #startBtn { background: #2dd4bf; color: #0f172a; }
+  #soundBtn { flex: 0 0 52px; background: #334155; font-size: 20px; }
+  .overlay {
+    position: fixed; inset: 0; background: rgba(2, 6, 23, 0.82);
+    display: flex; align-items: center; justify-content: center; z-index: 10; padding: 16px;
+  }
+  .overlay.hidden { display: none; }
+  .panel {
+    background: #1e293b; border: 1px solid #334155; border-radius: 16px;
+    padding: 22px; max-width: 400px; width: 100%; text-align: center;
+  }
+  .panel h2 { color: #2dd4bf; margin-bottom: 10px; }
+  .panel p { color: #cbd5e1; font-size: 14px; line-height: 1.6; margin-bottom: 8px; }
+  .panel .big { font-size: 34px; font-weight: 800; color: #fff; margin: 8px 0; }
+  .panel button { width: 100%; margin-top: 12px; }
+  .legend { font-size: 12px; color: #94a3b8; text-align: center; margin-top: 10px; line-height: 1.7; }
+  .found-list { font-size: 22px; letter-spacing: 4px; margin: 6px 0; min-height: 28px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>⛏️ Metal Detector</h1>
+  <div class="sub">Cari harta karun terpendam — ikuti bipnya!</div>
+
+  <div class="stats">
+    <div class="stat"><div class="label">SKOR</div><div class="value" id="score">0</div></div>
+    <div class="stat"><div class="label">TERBAIK</div><div class="value" id="best">0</div></div>
+    <div class="stat"><div class="label">WAKTU</div><div class="value" id="time">60</div></div>
+    <div class="stat"><div class="label">RONDE</div><div class="value" id="round">1</div></div>
+  </div>
+
+  <canvas id="field" width="360" height="360"></canvas>
+
+  <div class="meter-wrap">
+    <div class="meter-label"><span>📡 SINYAL</span><span id="signalText">—</span></div>
+    <div class="meter"><div id="meterFill"></div></div>
+  </div>
+
+  <div id="hint">Tekan MULAI, lalu sapu detektor di lapangan.</div>
+  <div class="found-list" id="foundList"></div>
+
+  <div class="buttons">
+    <button id="digBtn" disabled>⛏️ GALI!</button>
+    <button id="startBtn">▶ MULAI</button>
+    <button id="soundBtn" title="Suara">🔊</button>
+  </div>
+
+  <div class="legend">
+    🪙 Koin +10 &nbsp; 🥇 Emas +25 &nbsp; 💎 Permata +50 &nbsp; 🔩 Sampah +0<br>
+    Bip makin cepat = makin dekat harta. Sinyal merah = GALI!
+  </div>
+</div>
+
+<div class="overlay" id="menuOverlay">
+  <div class="panel">
+    <h2>⛏️ Metal Detector</h2>
+    <p><b>Cara main:</b></p>
+    <p>1. Seret jarimu (atau mouse) di lapangan buat menggerakkan detektor.</p>
+    <p>2. Dengarkan bip — makin cepat dan makin tinggi nadanya, makin dekat hartanya.</p>
+    <p>3. Kalau sinyal merah, tekan <b>GALI!</b> tepat di titik itu.</p>
+    <p>4. Temukan semua harta sebelum waktu habis. Ronde berikutnya hartanya makin banyak!</p>
+    <button id="menuStartBtn" style="background:#2dd4bf;color:#0f172a;">▶ MULAI BERBURU</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="endOverlay">
+  <div class="panel">
+    <h2 id="endTitle">Waktu Habis!</h2>
+    <p id="endText">Ronde selesai.</p>
+    <div class="big" id="endScore">0</div>
+    <p id="endBest"></p>
+    <button id="nextBtn" style="background:#2dd4bf;color:#0f172a;">▶ RONDE BERIKUTNYA</button>
+    <button id="againBtn" style="background:#334155;">↻ MAIN LAGI DARI AWAL</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var W = 360, H = 360;
+  var canvas = document.getElementById("field");
+  var ctx = canvas.getContext("2d");
+  var scoreEl = document.getElementById("score");
+  var bestEl = document.getElementById("best");
+  var timeEl = document.getElementById("time");
+  var roundEl = document.getElementById("round");
+  var hintEl = document.getElementById("hint");
+  var foundEl = document.getElementById("foundList");
+  var meterEl = document.getElementById("meterFill");
+  var signalTextEl = document.getElementById("signalText");
+  var digBtn = document.getElementById("digBtn");
+  var startBtn = document.getElementById("startBtn");
+  var soundBtn = document.getElementById("soundBtn");
+  var menuOverlay = document.getElementById("menuOverlay");
+  var endOverlay = document.getElementById("endOverlay");
+
+  var BEST_KEY = "metal-detector-best";
+  var best = 0;
+  try { best = parseInt(localStorage.getItem(BEST_KEY) || "0", 10) || 0; } catch (e) { best = 0; }
+  bestEl.textContent = best;
+
+  var state = "menu"; // menu | playing | over
+  var score = 0, round = 1, timeLeft = 60, roundTime = 60;
+  var treasures = []; // {x, y, type, emoji, pts, dug}
+  var det = { x: W / 2, y: H / 2, has: false };
+  var soundOn = true;
+  var audioCtx = null;
+  var lastBeep = 0;
+  var lastTickSecond = -1;
+  var digCooldownUntil = 0;
+  var roundStartAt = 0;
+  var floaters = []; // {x, y, text, until}
+  var speckles = [];
+
+  for (var i = 0; i < 160; i++) {
+    speckles.push({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 2 + 0.6, c: Math.random() < 0.5 ? "#6b4a22" : "#8a6a35" });
+  }
+  // grass tufts
+  var tufts = [];
+  for (var j = 0; j < 26; j++) {
+    tufts.push({ x: Math.random() * W, y: Math.random() * H });
+  }
+
+  var TYPES = [
+    { type: "coin", emoji: "🪙", pts: 10 },
+    { type: "gold", emoji: "🥇", pts: 25 },
+    { type: "gem", emoji: "💎", pts: 50 },
+    { type: "junk", emoji: "🔩", pts: 0 }
+  ];
+
+  function rand(a, b) { return a + Math.random() * (b - a); }
+
+  function makeTreasures(n) {
+    var list = [];
+    var plan = [];
+    for (var k = 0; k < n; k++) {
+      if (k === 0) plan.push(TYPES[2]);          // 1 permata
+      else if (k === 1) plan.push(TYPES[1]);     // 1 emas
+      else if (round >= 3 && k === 2) plan.push(TYPES[3]); // 1 sampah dari ronde 3
+      else plan.push(TYPES[0]);                  // sisanya koin
+    }
+    var guard = 0;
+    while (list.length < n && guard < 500) {
+      guard++;
+      var x = rand(34, W - 34), y = rand(34, H - 34);
+      var ok = true;
+      for (var m = 0; m < list.length; m++) {
+        var dx = list[m].x - x, dy = list[m].y - y;
+        if (dx * dx + dy * dy < 55 * 55) { ok = false; break; }
+      }
+      if (ok) {
+        var t = plan[list.length];
+        list.push({ x: x, y: y, type: t.type, emoji: t.emoji, pts: t.pts, dug: false });
+      }
+    }
+    return list;
+  }
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audioCtx = null; }
+    }
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+  }
+
+  function beep(freq, dur, vol, type) {
+    if (!soundOn || !audioCtx) return;
+    var t = audioCtx.currentTime;
+    var o = audioCtx.createOscillator();
+    var g = audioCtx.createGain();
+    o.type = type || "sine";
+    o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol || 0.12, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  function nearestTreasure() {
+    var bestD = Infinity, bestT = null;
+    for (var i = 0; i < treasures.length; i++) {
+      if (treasures[i].dug) continue;
+      var dx = treasures[i].x - det.x, dy = treasures[i].y - det.y;
+      var d = Math.sqrt(dx * dx + dy * dy);
+      if (d < bestD) { bestD = d; bestT = treasures[i]; }
+    }
+    return { d: bestD, t: bestT };
+  }
+
+  function signal() {
+    if (!det.has || state !== "playing") return 0;
+    var n = nearestTreasure();
+    if (!n.t) return 0;
+    return Math.max(0, Math.min(1, 1 - n.d / 170));
+  }
+
+  function setHint(msg) { hintEl.textContent = msg; }
+
+  function updateHUD() {
+    scoreEl.textContent = score;
+    bestEl.textContent = best;
+    timeEl.textContent = Math.max(0, Math.ceil(timeLeft));
+    timeEl.classList.toggle("warn", timeLeft <= 10 && state === "playing");
+    roundEl.textContent = round;
+    var dug = treasures.filter(function (t) { return t.dug; }).map(function (t) { return t.emoji; }).join(" ");
+    foundEl.textContent = dug;
+  }
+
+  function startRound(r) {
+    round = r;
+    roundTime = 60;
+    timeLeft = roundTime;
+    treasures = makeTreasures(Math.min(4 + r, 8));
+    det.has = false;
+    floaters = [];
+    lastTickSecond = -1;
+    roundStartAt = performance.now();
+    state = "playing";
+    digBtn.disabled = false;
+    startBtn.textContent = "■ STOP";
+    setHint("Sapu detektor di lapangan — ikuti bipnya!");
+    updateHUD();
+  }
+
+  function endRound(title, text) {
+    state = "over";
+    digBtn.disabled = true;
+    startBtn.textContent = "▶ MULAI";
+    if (score > best) {
+      best = score;
+      try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {}
+    }
+    document.getElementById("endTitle").textContent = title;
+    document.getElementById("endText").textContent = text;
+    document.getElementById("endScore").textContent = score + " poin";
+    document.getElementById("endBest").textContent = "Skor terbaik: " + best;
+    var remaining = treasures.filter(function (t) { return !t.dug; }).length;
+    document.getElementById("nextBtn").style.display = remaining === 0 ? "" : "none";
+    endOverlay.classList.remove("hidden");
+    updateHUD();
+  }
+
+  function dig() {
+    if (state !== "playing") return;
+    var now = performance.now();
+    if (now < digCooldownUntil) return;
+    digCooldownUntil = now + 600;
+    ensureAudio();
+    var n = nearestTreasure();
+    if (n.t && n.d <= 38) {
+      n.t.dug = true;
+      score += n.t.pts;
+      floaters.push({ x: n.t.x, y: n.t.y - 10, text: (n.t.pts > 0 ? "+" + n.t.pts : "+0") + " " + n.t.emoji, until: now + 1100 });
+      if (n.t.type === "junk") {
+        setHint("Yah, cuma sampah 🔩 (+0)!");
+        beep(160, 0.25, 0.12, "sawtooth");
+      } else {
+        setHint("Dapat " + n.t.emoji + " +" + n.t.pts + " poin!");
+        beep(880, 0.12, 0.14); setTimeout(function () { beep(1318, 0.18, 0.14); }, 90);
+      }
+      if (treasures.every(function (t) { return t.dug; })) {
+        setTimeout(function () {
+          if (state === "playing") endRound("Ronde " + round + " Bersih! 🎉", "Semua harta ditemukan. Lanjut ke ronde berikutnya?");
+        }, 700);
+      }
+    } else {
+      setHint("Kosong di sini… geser detektornya.");
+      beep(120, 0.18, 0.1, "sawtooth");
+    }
+    updateHUD();
+  }
+
+  function pointerPos(e) {
+    var r = canvas.getBoundingClientRect();
+    var cx = (e.touches ? e.touches[0].clientX : e.clientX);
+    var cy = (e.touches ? e.touches[0].clientY : e.clientY);
+    return { x: (cx - r.left) * (W / r.width), y: (cy - r.top) * (H / r.height) };
+  }
+
+  function onMove(e) {
+    e.preventDefault();
+    var p = pointerPos(e);
+    det.x = Math.max(0, Math.min(W, p.x));
+    det.y = Math.max(0, Math.min(H, p.y));
+    det.has = true;
+    ensureAudio();
+  }
+
+  canvas.addEventListener("pointerdown", onMove);
+  canvas.addEventListener("pointermove", function (e) { if (e.buttons) onMove(e); });
+  canvas.addEventListener("touchstart", onMove, { passive: false });
+  canvas.addEventListener("touchmove", onMove, { passive: false });
+
+  digBtn.addEventListener("click", dig);
+  soundBtn.addEventListener("click", function () {
+    soundOn = !soundOn;
+    soundBtn.textContent = soundOn ? "🔊" : "🔇";
+    if (soundOn) ensureAudio();
+  });
+
+  function startGame() {
+    ensureAudio();
+    menuOverlay.classList.add("hidden");
+    endOverlay.classList.add("hidden");
+    score = 0;
+    startRound(1);
+  }
+
+  startBtn.addEventListener("click", function () {
+    if (state === "playing") { endRound("Berhenti", "Skor ronde ini: " + score + " poin."); }
+    else startGame();
+  });
+  document.getElementById("menuStartBtn").addEventListener("click", startGame);
+  document.getElementById("nextBtn").addEventListener("click", function () {
+    endOverlay.classList.add("hidden");
+    startRound(round + 1);
+  });
+  document.getElementById("againBtn").addEventListener("click", function () {
+    endOverlay.classList.add("hidden");
+    score = 0;
+    startRound(1);
+  });
+
+  function drawField() {
+    // tanah
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#8a6a35"); g.addColorStop(1, "#6b4a22");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    for (var i = 0; i < speckles.length; i++) {
+      ctx.fillStyle = speckles[i].c;
+      ctx.beginPath(); ctx.arc(speckles[i].x, speckles[i].y, speckles[i].r, 0, Math.PI * 2); ctx.fill();
+    }
+    // rumput
+    ctx.strokeStyle = "#4d7c0f"; ctx.lineWidth = 1.4;
+    for (var j = 0; j < tufts.length; j++) {
+      var t = tufts[j];
+      ctx.beginPath();
+      ctx.moveTo(t.x - 3, t.y); ctx.lineTo(t.x - 4, t.y - 7);
+      ctx.moveTo(t.x, t.y); ctx.lineTo(t.x, t.y - 8);
+      ctx.moveTo(t.x + 3, t.y); ctx.lineTo(t.x + 4, t.y - 7);
+      ctx.stroke();
+    }
+    // harta yang sudah digali
+    ctx.font = "26px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (var k = 0; k < treasures.length; k++) {
+      if (!treasures[k].dug) continue;
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
+      ctx.beginPath(); ctx.arc(treasures[k].x, treasures[k].y, 17, 0, Math.PI * 2); ctx.fill();
+      ctx.fillText(treasures[k].emoji, treasures[k].x, treasures[k].y);
+    }
+    // detektor
+    if (det.has) {
+      var s = signal();
+      var rr = 26 + s * 10;
+      ctx.strokeStyle = s > 0.75 ? "#ef4444" : (s > 0.4 ? "#facc15" : "#2dd4bf");
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(det.x, det.y, rr, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = "rgba(45,212,191,0.18)";
+      ctx.beginPath(); ctx.arc(det.x, det.y, rr, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(det.x, det.y, 4, 0, Math.PI * 2); ctx.fill();
+      // garis sapu
+      ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(det.x, det.y - rr - 14); ctx.lineTo(det.x, det.y - rr + 2); ctx.stroke();
+    }
+    // teks melayang
+    var now = performance.now();
+    ctx.font = "bold 15px sans-serif";
+    floaters = floaters.filter(function (f) { return now < f.until; });
+    for (var f = 0; f < floaters.length; f++) {
+      ctx.fillStyle = "#fff";
+      ctx.fillText(floaters[f].text, floaters[f].x, floaters[f].y - (1100 - (floaters[f].until - now)) / 40);
+    }
+  }
+
+  function loop(now) {
+    if (state === "playing") {
+      timeLeft = roundTime - (now - roundStartAt) / 1000;
+      var sec = Math.ceil(timeLeft);
+      if (sec !== lastTickSecond) {
+        lastTickSecond = sec;
+        if (sec <= 5 && sec > 0) beep(660, 0.07, 0.08);
+      }
+      if (timeLeft <= 0) {
+        timeLeft = 0; updateHUD();
+        endRound("Waktu Habis! ⏰", "Harta yang belum ketemu: " + treasures.filter(function (t) { return !t.dug; }).length + ". Skor: " + score + " poin.");
+      } else {
+        var s = signal();
+        meterEl.style.width = Math.round(s * 100) + "%";
+        meterEl.style.background = s > 0.75 ? "#ef4444" : (s > 0.4 ? "#facc15" : "#22c55e");
+        signalTextEl.textContent = det.has ? (s > 0.75 ? "SANGAT DEKAT — GALI!" : (s > 0.4 ? "Makin dekat…" : (s > 0.08 ? "Ada sinyal lemah" : "Tidak ada sinyal"))) : "—";
+        digBtn.classList.toggle("hot", s > 0.75);
+        if (s > 0.03 && now - lastBeep > (650 - s * 560)) {
+          lastBeep = now;
+          beep(480 + s * 720, 0.07, 0.1);
+        }
+        updateHUD();
+      }
+    }
+    drawField();
+    requestAnimationFrame(loop);
+  }
+
+  updateHUD();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
